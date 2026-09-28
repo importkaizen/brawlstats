@@ -28,17 +28,12 @@ npm run db:push          # creates ./prisma/dev.db (SQLite)
 npm run dev              # http://localhost:3000
 ```
 
-That's it for getting the UI up. Visit
-[`/demo`](http://localhost:3000/demo) to explore the dashboard with
-synthetic data immediately — no API key required.
 
 To wire up live data, drop an API key into `.env`:
 
 ```bash
 # .env
 BRAWLSTARS_API_KEY=your-key-from-developer.brawlstars.com
-# Optional second key, used if the first is rejected:
-BRAWLSTARS_API_KEY_BACKUP=another-key-from-developer.brawlstars.com
 ```
 
 Get one at <https://developer.brawlstars.com>. The key is bound to the
@@ -130,7 +125,3 @@ Vercel Cron ─────┘                                            └─
    (configured in `vercel.json`).
 4. Deploy. The first poll will populate every connected player.
 
-## Disclaimer
-
-MyreBrawl is an unofficial fan project and is not affiliated with or endorsed
-by Supercell. Brawler / map artwork is fetched from Brawlify's public CDN.
