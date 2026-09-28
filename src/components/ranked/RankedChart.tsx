@@ -19,14 +19,12 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-  type LabelProps,
 } from "recharts";
 import { RANKED_SUB_TIERS, getSubTier } from "@/lib/rankedTiers";
-import { RANK_TIERS } from "@/lib/ranks";
 import { cn } from "@/lib/utils";
 import { formatChartValue, matchAxis } from "@/lib/chartScale";
 import { rankedValueAxis, visibleMatchRange } from "@/lib/rankedChartScale";
-import { ChartFooter, ChartToolbar } from "@/components/charts/ChartChrome";
+import { ChartToolbar } from "@/components/charts/ChartChrome";
 import { useAnimatedChartDomain } from "@/components/charts/useAnimatedChartDomain";
 
 type Point = {
@@ -47,64 +45,6 @@ function chartDisplayRating(p: Point): number {
 }
 
 const DIVISION_OPACITY = { 1: 0.14, 2: 0.23, 3: 0.32 };
-
-function RankBandLabel({
-  viewBox,
-  name,
-  color,
-}: {
-  viewBox: LabelProps["viewBox"];
-  name: string;
-  color: string;
-}) {
-  if (!viewBox || !("width" in viewBox) || viewBox.height < 22) return null;
-  return (
-    <text
-      x={viewBox.x + viewBox.width - 10}
-      y={viewBox.y + viewBox.height / 2}
-      textAnchor="end"
-      dominantBaseline="middle"
-      fill={color}
-      fontSize={12}
-      fontWeight={600}
-      letterSpacing="0.06em"
-      stroke="#141529"
-      strokeWidth={3}
-      paintOrder="stroke"
-      pointerEvents="none"
-    >
-      {name.toUpperCase()}
-    </text>
-  );
-}
-
-function RankBoundaryLabel({
-  viewBox,
-  name,
-  color,
-}: {
-  viewBox: LabelProps["viewBox"];
-  name: string;
-  color: string;
-}) {
-  if (!viewBox || !("width" in viewBox)) return null;
-  return (
-    <text
-      x={viewBox.x + viewBox.width - 10}
-      y={viewBox.y + 18}
-      textAnchor="end"
-      fill={color}
-      fontSize={12}
-      fontWeight={700}
-      stroke="#141529"
-      strokeWidth={3}
-      paintOrder="stroke"
-      pointerEvents="none"
-    >
-      {name.toUpperCase()}
-    </text>
-  );
-}
 
 export function RankedChart({ data }: { data: Point[] }) {
   const [fromZero, setFromZero] = useState(false);
@@ -218,16 +158,6 @@ export function RankedChart({ data }: { data: Point[] }) {
     lower: Math.max(yMin, tier.threshold),
     upper: Math.min(yMax, RANKED_SUB_TIERS[index + 1]?.threshold ?? yMax),
   })).filter((band) => band.upper > band.lower);
-  const visibleMainRanks = RANK_TIERS.map((tier, index) => ({
-    ...tier,
-    lower: Math.max(yMin, tier.threshold),
-    upper: Math.min(yMax, RANK_TIERS[index + 1]?.threshold ?? yMax),
-  })).filter(
-    (band) =>
-      band.upper > band.lower ||
-      (band.threshold >= yMin && band.threshold <= yMax),
-  );
-
   const canvasMinWidth =
     points.length > 1
       ? Math.max(1800, Math.min(12000, lastMatch * 100 + 40))
@@ -368,41 +298,8 @@ export function RankedChart({ data }: { data: Point[] }) {
                     stroke="none"
                     zIndex={-200}
                     pointerEvents="none"
-                    label={
-                      fromZero
-                        ? false
-                        : {
-                            content: ({ viewBox }) => (
-                              <RankBandLabel
-                                viewBox={viewBox}
-                                name={band.name}
-                                color={band.color}
-                              />
-                            ),
-                          }
-                    }
                   />
                 ))}
-                {fromZero &&
-                  visibleMainRanks.map((band) => (
-                    <ReferenceArea
-                      key={`label-${band.name}`}
-                      y1={band.lower}
-                      y2={band.upper}
-                      fill="none"
-                      stroke="none"
-                      pointerEvents="none"
-                      label={{
-                        content: ({ viewBox }) => (
-                          <RankBandLabel
-                            viewBox={viewBox}
-                            name={band.name}
-                            color={band.color}
-                          />
-                        ),
-                      }}
-                    />
-                  ))}
                 <CartesianGrid
                   vertical={false}
                   strokeDasharray="3 6"
@@ -457,19 +354,6 @@ export function RankedChart({ data }: { data: Point[] }) {
                     }
                     strokeOpacity={
                       t.division === 1 || t.division === null ? 0.95 : 0.55
-                    }
-                    label={
-                      t.threshold === yMax
-                        ? {
-                            content: ({ viewBox }) => (
-                              <RankBoundaryLabel
-                                viewBox={viewBox}
-                                name={`${t.name} · ${formatChartValue(t.threshold)}`}
-                                color={t.color}
-                              />
-                            ),
-                          }
-                        : false
                     }
                   />
                 ))}
@@ -614,45 +498,6 @@ export function RankedChart({ data }: { data: Point[] }) {
           </div>
         </div>
       </div>
-      <div
-        className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2"
-        aria-label="Rank band colors"
-      >
-        {visibleMainRanks.map((tier) => (
-          <div
-            key={tier.name}
-            className="flex items-center gap-2 text-[11px] text-muted-foreground"
-          >
-            <span
-              className="flex overflow-hidden rounded-sm border border-white/10 bg-background"
-              aria-hidden="true"
-            >
-              {(tier.name === "Pro" ? [null] : ([1, 2, 3] as const)).map(
-                (division) => (
-                  <span
-                    key={division ?? "pro"}
-                    className="h-2.5 w-2.5"
-                    style={{
-                      backgroundColor: tier.color,
-                      opacity:
-                        division == null ? 0.23 : DIVISION_OPACITY[division],
-                    }}
-                  />
-                ),
-              )}
-            </span>
-            <span style={{ color: tier.color }}>{tier.name}</span>
-          </div>
-        ))}
-        <span className="text-[11px] text-muted-foreground">
-          Darker → lighter: I → II → III
-        </span>
-      </div>
-      <ChartFooter
-        count={points.length}
-        flat={scale.min === scale.max}
-        unit="Rating"
-      />
     </div>
   );
 }

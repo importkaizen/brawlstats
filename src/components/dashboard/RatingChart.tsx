@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import { RANK_TIERS, getRank } from "@/lib/ranks";
 import { formatChartValue, matchAxis, valueAxis } from "@/lib/chartScale";
-import { ChartFooter, ChartToolbar } from "@/components/charts/ChartChrome";
+import { ChartToolbar } from "@/components/charts/ChartChrome";
 
 /** Supports Profile trophy curve (`value`) or legacy rated curve (`ratingAfter`). */
 export type RatingChartPoint = {
@@ -262,11 +262,6 @@ export function RatingChart({
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      <ChartFooter
-        count={points.length}
-        flat={scale.min === scale.max}
-        unit={isTrophies ? "Trophy" : "Rating"}
-      />
     </div>
   );
 }

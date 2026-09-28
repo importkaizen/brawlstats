@@ -37,12 +37,3 @@ export function ChartToolbar({
     </div>
   );
 }
-
-export function ChartFooter({ count, flat, unit }: { count: number; flat: boolean; unit: string }) {
-  return (
-    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
-      <span>Match order · oldest → newest</span>
-      <span>{count === 1 ? "One recorded snapshot" : flat ? `No ${unit.toLowerCase()} change recorded in this window` : `${count} recorded points`}</span>
-    </div>
-  );
-}
