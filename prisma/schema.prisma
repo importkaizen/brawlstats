@@ -1,0 +1,144 @@
+// MyreBrawl Prisma schema.
+//
+// Default provider is SQLite so `npm run dev` works out of the box. To
+// switch to Postgres for production, change the provider line below to
+// `postgresql` and point DATABASE_URL at your Postgres instance.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Player {
+  id              String   @id @default(cuid())
+  tag             String   @unique
+  name            String
+  icon            Int      @default(0)
+  trophies        Int      @default(0)
+  highestTrophies Int      @default(0)
+  expLevel        Int       @default(0)
+  /** Snapshot of `/players/{tag}` brawler roster (JSON array); updated each poll / refresh. */
+  ownedBrawlersJson String?
+  // When false (default since v2), we capture every battle the API
+  // returns — ranked, casual, showdown, friendlies — and tag each one
+  // with its real `isRanked` flag. The Profile dashboard shows the
+  // full mix; the Ranked dashboard filters to the real ranked queue.
+  trackOnlyRanked Boolean  @default(false)
+  // Synthetic players created by /demo are flagged so the cron job can
+  // skip them and so the UI can call them out as not-real.
+  isDemo          Boolean  @default(false)
+
+  // The Brawl Stars `/players/{tag}` endpoint returns the player's
+  // absolute current ranked elo, rank name, and both the season and
+  // all-time peaks. We cache the latest snapshot here on every poll so
+  // the dashboard can render even when the API is briefly unavailable.
+  rankedElo          Int?
+  rankedRank         Int?
+  rankedRankName     String?
+  rankedSeasonId     Int?
+  peakRankedElo      Int?
+  peakRankedRankName String?
+  // Career-high ranked elo / rank, surfaced on the "all-time" toggle.
+  peakAllTimeRankedElo      Int?
+  peakAllTimeRankedRank     Int?
+  peakAllTimeRankedRankName String?
+
+  // Marks when the user explicitly opted in to ranked logging via the
+  // dashboard's "Start logging ranked" button. Battles before this
+  // timestamp are still kept (so we don't lose history), but the ranked
+  // dashboard uses it to label the "logging since" indicator.
+  rankedLoggingStartedAt DateTime?
+
+  // Legacy: the old `Set your baseline` flow saved a manual rating
+  // anchor. Kept as a fallback in case the API ever stops serving the
+  // ranked fields (which would otherwise null out the whole dashboard).
+  rankedBaseline   Int?
+  rankedBaselineAt DateTime?
+
+  createdAt  DateTime @default(now())
+  lastPolled DateTime @default(now())
+  battles    Battle[]
+  linkedByUser User?
+}
+
+model Battle {
+  id           String   @id @default(cuid())
+  playerId     String
+  player       Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  battleTime   DateTime
+  mode         String
+  map          String
+  result       String
+  brawlerName  String
+  brawlerId    Int
+  trophyChange Int      @default(0)
+  ratingBefore Int?
+  ratingAfter  Int?
+  duration     Int      @default(0)
+  isRanked     Boolean  @default(true)
+  season       String?
+  // Stored as JSON-serialized string so the schema works on SQLite
+  // *and* Postgres without any provider-specific column types.
+  raw          String
+  createdAt    DateTime @default(now())
+
+  @@unique([playerId, battleTime])
+  @@index([playerId, battleTime])
+  @@index([playerId, brawlerId])
+  @@index([playerId, mode])
+}
+
+// --- Auth.js (next-auth v5) + optional Brawl Stars link ---------------------
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id              String    @id @default(cuid())
+  name            String?
+  email           String?   @unique
+  emailVerified   DateTime?
+  image           String?
+  linkedPlayerTag String?   @unique
+  linkedPlayerId  String?   @unique
+  linkedPlayer    Player?   @relation(fields: [linkedPlayerId], references: [id], onDelete: SetNull)
+
+  accounts Account[]
+  sessions Session[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
