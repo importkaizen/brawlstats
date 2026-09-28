@@ -44,8 +44,9 @@ the connect form on `/` will fetch your real battle history.
 
 `prisma/schema.prisma` is the production PostgreSQL schema. Local development
 uses `prisma/schema.sqlite.prisma`; `npm run dev` generates its local client.
-Set `DATABASE_URL` to your hosted PostgreSQL connection string, then run
-`npm run db:push` once against the production database.
+Set `DATABASE_URL` to your hosted PostgreSQL connection string. The Vercel
+build applies the schema automatically before the app is built. You can also
+run `npm run db:push` once against the production database yourself.
 
 The `raw` battle-payload column is stored as a JSON-serialized string so
 the schema works against either provider unchanged.
@@ -122,4 +123,3 @@ GitHub Actions ──┘                                            └─► /c
    as the `PUBLIC_APP_URL` Actions variable. The included workflow calls
    `/api/cron/poll` every 15 minutes.
 4. Deploy. The first poll will populate every connected player.
-
