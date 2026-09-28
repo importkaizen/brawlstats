@@ -1,13 +1,15 @@
 // MyreBrawl Prisma schema.
 //
-// Production schema. Local development uses schema.sqlite.prisma.
+// Default provider is SQLite so `npm run dev` works out of the box. To
+// switch to Postgres for production, change the provider line below to
+// `postgresql` and point DATABASE_URL at your Postgres instance.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 

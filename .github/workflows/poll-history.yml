@@ -1,0 +1,25 @@
+name: Poll saved Brawl Stars history
+
+on:
+  schedule:
+    # Offset from the top of the hour, when scheduled GitHub jobs are busiest.
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Capture new matches
+        env:
+          APP_URL: ${{ vars.PUBLIC_APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$APP_URL"
+          test -n "$CRON_SECRET"
+          curl --fail --silent --show-error \
+            --retry 2 \
+            --max-time 75 \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/poll"

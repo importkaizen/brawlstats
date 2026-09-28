@@ -4,13 +4,13 @@ Auto-tracking ranked dashboard for **Brawl Stars**. Drop in your player tag and
 MyreBrawl fetches every ranked battle, rebuilds your rating curve, and surfaces
 the brawlers and maps you actually win on.
 
-Built with Next.js 14 (App Router), TypeScript, Tailwind CSS, Prisma + PostgreSQL,
+Built with Next.js (App Router), TypeScript, Tailwind CSS, Prisma + PostgreSQL,
 Recharts and `@vercel/og` for shareable cards.
 
 ## Features
 
 - Connect-by-tag onboarding — no accounts, no passwords.
-- Background polling every 5 minutes (Vercel Cron) with deduplication.
+- Background polling every 15 minutes (GitHub Actions) with deduplication.
 - Saved battle history with pages for older games; captured records are never
   pruned when the API's recent battle window changes.
 - Rating curve with rank thresholds (Bronze → Pro) overlaid.
@@ -24,7 +24,7 @@ Recharts and `@vercel/og` for shareable cards.
 
 ```bash
 npm install
-npm run db:push          # creates ./prisma/dev.db (SQLite)
+npm run db:push:local    # creates ./prisma/dev.db (SQLite)
 npm run dev              # http://localhost:3000
 ```
 
@@ -42,13 +42,10 @@ the connect form on `/` will fetch your real battle history.
 
 ### Postgres for production
 
-The schema defaults to SQLite for friction-free local dev. To switch to
-Postgres:
-
-1. Edit `prisma/schema.prisma` and change `provider = "sqlite"` to
-   `provider = "postgresql"`.
-2. Set `DATABASE_URL` to your Postgres connection string in `.env`.
-3. Re-run `npm run db:push`.
+`prisma/schema.prisma` is the production PostgreSQL schema. Local development
+uses `prisma/schema.sqlite.prisma`; `npm run dev` generates its local client.
+Set `DATABASE_URL` to your hosted PostgreSQL connection string, then run
+`npm run db:push` once against the production database.
 
 The `raw` battle-payload column is stored as a JSON-serialized string so
 the schema works against either provider unchanged.
@@ -61,7 +58,7 @@ the schema works against either provider unchanged.
 | `BRAWLSTARS_API_KEY`    | Prod     | Bearer token from <https://developer.brawlstars.com>. IP-locked. |
 | `BRAWLSTARS_API_KEY_BACKUP` | Optional | Second token, tried after a key rejection (401/403). The last successful key is reused. |
 | `BRAWLSTARS_PROXY_URL`  | Optional | Override the API base URL with a fixed-IP proxy you control. |
-| `CRON_SECRET`           | Prod     | Token Vercel Cron must send as `Authorization: Bearer …`. |
+| `CRON_SECRET`           | Prod     | Token GitHub Actions sends as `Authorization: Bearer …`. |
 | `NEXT_PUBLIC_APP_URL`   | Optional | Public site URL — used for OG metadata. |
 
 ## Saved match history
@@ -86,7 +83,7 @@ the schema works against either provider unchanged.
 ```
 Brawl Stars API ─┐
                  ├─► /lib/poll.pollPlayer ─► Prisma (Postgres) ─► /api/* ─► UI
-Vercel Cron ─────┘                                            └─► /card/* (OG)
+GitHub Actions ──┘                                            └─► /card/* (OG)
 ```
 
 - `src/lib/brawlstars.ts` — typed API client for the official Brawl Stars
@@ -110,7 +107,7 @@ Vercel Cron ─────┘                                            └─
 - `src/lib/seasons.ts` — deterministic season IDs based on a fortnightly
   cadence anchored on the post-rework Season 1 start.
 - `src/app/api/cron/poll/route.ts` — scans players whose `lastPolled` is
-  older than 5 minutes and re-polls them. Authorized via `CRON_SECRET`.
+  older than 15 minutes and re-polls them. Authorized via `CRON_SECRET`.
 
 ## Deployment
 
@@ -120,8 +117,9 @@ Vercel Cron ─────┘                                            └─
    IP. **Vercel Functions have dynamic IPs** — for production, route the
    Brawl Stars API through a small fixed-IP proxy (a $5 VPS works) and set
    `BRAWLSTARS_PROXY_URL`.
-3. Set `CRON_SECRET` to a long random string. Vercel will send it as the
-   bearer token on `*/5 * * * *` invocations of `/api/cron/poll`
-   (configured in `vercel.json`).
+3. Set `CRON_SECRET` to a long random string in Vercel. In GitHub, add the
+   same value as the `CRON_SECRET` Actions secret and add the deployment URL
+   as the `PUBLIC_APP_URL` Actions variable. The included workflow calls
+   `/api/cron/poll` every 15 minutes.
 4. Deploy. The first poll will populate every connected player.
 

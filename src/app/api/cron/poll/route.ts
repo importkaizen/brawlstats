@@ -3,7 +3,7 @@ import { pollStalePlayers } from "@/lib/poll";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// Vercel hobby plan limits cron jobs to 5 minutes. Keep this short.
+// Invoked by the repository's GitHub Actions workflow on the free hosting plan.
 export const maxDuration = 60;
 
 function isAuthorized(req: NextRequest): boolean {
@@ -29,7 +29,7 @@ async function run(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const result = await pollStalePlayers(5 * 60 * 1000);
+  const result = await pollStalePlayers(15 * 60 * 1000);
   return NextResponse.json({
     ok: true,
     scanned: result.scanned,

@@ -27,6 +27,7 @@ yarn-error.log*
 
 # local env files
 .env
+.env.production
 .env*.local
 
 # prisma — local SQLite (never commit real user data)
