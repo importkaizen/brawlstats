@@ -2,7 +2,6 @@ import Link from "next/link";
 import { ArrowUpRight, ArrowRight, Check, Swords, Trophy } from "lucide-react";
 import { ConnectForm } from "@/components/ConnectForm";
 import { Logo } from "@/components/Logo";
-import { AuthNav } from "@/components/AuthNav";
 import { rankedTierIconUrl } from "@/lib/utils";
 
 export default function Home() {
@@ -17,7 +16,6 @@ export default function Home() {
           <Link href="/demo" className="nav-link">
             Explore demo
           </Link>
-          <AuthNav compact />
         </nav>
       </header>
 
@@ -221,12 +219,7 @@ export default function Home() {
           </HomeFeature>
         </div>
       </section>
-      <footer className="flex flex-wrap items-start justify-between gap-5 py-8 text-[10px] leading-relaxed text-muted-foreground">
-        <span>
-          MyreBrawl is an unofficial Brawl Stars companion.
-          <br />
-          Not affiliated with or endorsed by Supercell.
-        </span>
+      <footer className="flex justify-end py-8 text-[10px] leading-relaxed text-muted-foreground">
         <a
           href="https://developer.brawlstars.com"
           target="_blank"

@@ -23,7 +23,6 @@ export function ConnectForm({
   const [tag, setTag] = useState(initialTag);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
-  const helperId = "connect-tag-hint";
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -92,7 +91,6 @@ export function ConnectForm({
           autoCorrect="off"
           spellCheck={false}
           aria-invalid={Boolean(error)}
-          aria-describedby={helperId}
           className="sm:flex-1"
         />
         <Button type="submit" size="lg" disabled={loading} aria-busy={loading}>
@@ -144,11 +142,6 @@ export function ConnectForm({
         </div>
       )}
 
-      <p id={helperId} className="mt-2 text-xs text-muted-foreground">
-        Find your tag in the Brawl Stars app under your profile name. The
-        leading <span className="font-mono text-foreground">#</span> is
-        required.
-      </p>
     </form>
   );
 }

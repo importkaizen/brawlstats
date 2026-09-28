@@ -11,7 +11,7 @@ export async function assertLinkedOwnerForRouteTag(encodedSlugParam: string) {
       response: NextResponse.json(
         {
           error:
-            "Sign in with Google (or Discord) and link your tag to refresh or change settings.",
+            "Open this dashboard from the browser used to connect the tag to refresh or change settings.",
           code: "UNAUTHORIZED",
         },
         { status: 401 },
