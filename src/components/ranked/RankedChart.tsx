@@ -46,7 +46,13 @@ function chartDisplayRating(p: Point): number {
 
 const DIVISION_OPACITY = { 1: 0.14, 2: 0.23, 3: 0.32 };
 
-export function RankedChart({ data }: { data: Point[] }) {
+export function RankedChart({
+  data,
+  currentRating,
+}: {
+  data: Point[];
+  currentRating?: number | null;
+}) {
   const [fromZero, setFromZero] = useState(false);
   const [width, setWidth] = useState(0);
   const [height, setHeight] = useState(0);
@@ -65,6 +71,12 @@ export function RankedChart({ data }: { data: Point[] }) {
   const lastMatch = data.filter(
     (point) => point.brawlerName !== "Ranked start",
   ).length;
+  const liveRating =
+    currentRating != null && Number.isFinite(currentRating)
+      ? currentRating
+      : null;
+  const showLiveRating =
+    liveRating != null && (!viewedMatches || viewedMatches[1] >= lastMatch);
 
   const updateViewedMatches = useCallback(
     (viewport: HTMLDivElement) => {
@@ -99,7 +111,13 @@ export function RankedChart({ data }: { data: Point[] }) {
     return () => observer.disconnect();
   }, [data.length, updateViewedMatches]);
 
-  const ratings = useMemo(() => data.map(chartDisplayRating), [data]);
+  const ratings = useMemo(
+    () => [
+      ...data.map(chartDisplayRating),
+      ...(liveRating != null ? [liveRating] : []),
+    ],
+    [data, liveRating],
+  );
   const points = useMemo(() => {
     let gameNumber = 0;
     return data.map((d) => {
@@ -118,14 +136,18 @@ export function RankedChart({ data }: { data: Point[] }) {
   const viewedRatings = useMemo(
     () =>
       viewedMatches
-        ? points
-            .filter(
-              (point) =>
-                point.idx >= viewedMatches[0] && point.idx <= viewedMatches[1],
-            )
-            .map((point) => point.chartY)
+        ? [
+            ...points
+              .filter(
+                (point) =>
+                  point.idx >= viewedMatches[0] &&
+                  point.idx <= viewedMatches[1],
+              )
+              .map((point) => point.chartY),
+            ...(showLiveRating ? [liveRating!] : []),
+          ]
         : ratings,
-    [viewedMatches, points, ratings],
+    [viewedMatches, points, ratings, showLiveRating, liveRating],
   );
   const scale = useMemo(
     () => rankedValueAxis(ratings, fromZero, viewedRatings),
@@ -357,6 +379,21 @@ export function RankedChart({ data }: { data: Point[] }) {
                     }
                   />
                 ))}
+
+                {showLiveRating && (
+                  <ReferenceLine
+                    y={liveRating!}
+                    stroke="#ECEBE7"
+                    strokeDasharray="6 5"
+                    strokeOpacity={0.65}
+                    label={{
+                      value: `Current · ${formatChartValue(liveRating!)}`,
+                      position: "insideTopRight",
+                      fill: "#ECEBE7",
+                      fontSize: 11,
+                    }}
+                  />
+                )}
 
                 <Tooltip
                   content={({ active, payload }) => {

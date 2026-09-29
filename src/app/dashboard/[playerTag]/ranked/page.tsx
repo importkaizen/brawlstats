@@ -134,6 +134,8 @@ export default async function RankedPage({
         baseline: ranked.baseline,
         summary: ranked.summary,
         rating: ranked.rating,
+        liveChartRating:
+          season === "current" || season === "all" ? player.rankedElo : null,
         brawlers: ranked.brawlers,
         seasonHeading,
         totalRankedCaptured,

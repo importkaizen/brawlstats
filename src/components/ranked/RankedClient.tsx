@@ -64,6 +64,8 @@ export type RankedDashboardData = {
   baseline: number | null;
   summary: RankedSummary;
   rating: RankedRatingPoint[];
+  /** Latest profile rating, shown separately from completed-game snapshots. */
+  liveChartRating?: number | null;
   brawlers: RankedBrawlerRow[];
   seasonHeading: string;
   isDemo?: boolean;
@@ -686,7 +688,10 @@ export function RankedClient({
               </div>
               <span className="hidden section-kicker sm:inline">Ranked</span>
             </CardHeader>
-            <RankedChart data={data.rating} />
+            <RankedChart
+              data={data.rating}
+              currentRating={data.liveChartRating}
+            />
             <details className="mt-5 border-t border-border pt-4 text-[11px] text-muted-foreground">
               <summary className="cursor-pointer">
                 How your rating is tracked
