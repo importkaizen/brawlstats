@@ -1,8 +1,8 @@
 /**
  * Battle-log polling logic.
  *
- * `pollPlayer(tag)` snapshots `/players/{tag}.rankedElo` **before** and **after**
- * fetching the battlelog, inserts missing rows, then stamps ranked battles so the
+ * `pollPlayer(tag)` compares the previously saved rating with a fresh profile,
+ * inserts missing rows, then stamps ranked battles so the
  * rating curve isn’t flattened when several ranked rounds arrive in one poll.
  * Battle history is append-only: the API's rolling window never replaces or
  * trims stored rows. Ranked logging start/reset only controls the chart session.
@@ -11,7 +11,7 @@
  * post-battlelog `rankedElo`. Earlier rows use either:
  * - a backward walk from `battle.trophyChange` when the summed deltas roughly match
  *   the elo drift between the two profile snapshots, or
- * - **linear interpolation** between pre- and post-log elo across those rounds
+ * - **linear interpolation** between the previous capture and fresh elo across those rounds
  *   (better than cloning the same snapshot everywhere).
  *
  * When `trophyChange` is absent/zero (common for ranked in API docs), interpolation
@@ -220,7 +220,11 @@ async function insertNewBattles(
   const pending: Pending[] = [];
   for (const c of candidates) {
     if (haveTime.has(c.battleTime.getTime())) continue;
-    pending.push({ entry: c.entry, battleTime: c.battleTime, isRanked: c.isRanked });
+    pending.push({
+      entry: c.entry,
+      battleTime: c.battleTime,
+      isRanked: c.isRanked,
+    });
   }
 
   const rankedAsc = pending
@@ -305,7 +309,13 @@ async function reclassifyBattles(playerId: string): Promise<void> {
   const battles = await prisma.battle.findMany({
     where: { playerId },
     orderBy: { battleTime: "asc" },
-    select: { id: true, raw: true, isRanked: true, ratingAfter: true, ratingBefore: true },
+    select: {
+      id: true,
+      raw: true,
+      isRanked: true,
+      ratingAfter: true,
+      ratingBefore: true,
+    },
   });
   if (battles.length === 0) return;
 
@@ -376,6 +386,9 @@ async function reclassifyBattles(playerId: string): Promise<void> {
 
 export async function pollPlayer(tag: string): Promise<PollResult> {
   const t = normalizeTag(tag);
+  // Read this before ensurePlayer replaces the profile. Both API requests in
+  // this poll normally return the same *post-game* ELO, not the entry rating.
+  const previousPlayer = await prisma.player.findUnique({ where: { tag: t } });
   const apiBeforeBattlelog = await ensurePlayer(t);
   const player = await prisma.player.findUniqueOrThrow({ where: { tag: t } });
 
@@ -385,14 +398,25 @@ export async function pollPlayer(tag: string): Promise<PollResult> {
   const apiLive = await fetchPlayer(t);
   await refreshPlayerSnapshotFromApi(t, apiLive);
   const liveElo = apiLive.rankedElo ?? null;
-  const rankedEloBeforeBattlelog = apiBeforeBattlelog.rankedElo ?? null;
+  const sameRankedSeason =
+    previousPlayer?.rankedSeasonId == null ||
+    apiLive.rankedSeasonId == null ||
+    previousPlayer.rankedSeasonId === apiLive.rankedSeasonId;
+  const rankedEloBeforeBattlelog =
+    (sameRankedSeason ? previousPlayer?.rankedElo : null) ??
+    apiBeforeBattlelog.rankedElo ??
+    null;
 
   const rankedSessionWhere = {
     playerId: player.id,
     isRanked: true,
-    ...(player.rankedLoggingStartedAt ? { battleTime: { gte: player.rankedLoggingStartedAt } } : {}),
+    ...(player.rankedLoggingStartedAt
+      ? { battleTime: { gte: player.rankedLoggingStartedAt } }
+      : {}),
   };
-  const rankedBeforeInsert = await prisma.battle.count({ where: rankedSessionWhere });
+  const rankedBeforeInsert = await prisma.battle.count({
+    where: rankedSessionWhere,
+  });
 
   // Re-classify before insert so that any historical drift (e.g. rows
   // saved before the soloRanked fix) gets corrected on the same poll.
@@ -407,15 +431,16 @@ export async function pollPlayer(tag: string): Promise<PollResult> {
     rankedEloBeforeBattlelog,
   );
 
-  const rankedAfterInsert = await prisma.battle.count({ where: rankedSessionWhere });
+  const rankedAfterInsert = await prisma.battle.count({
+    where: rankedSessionWhere,
+  });
 
   const baselineAnchor = await prisma.player.findUnique({
     where: { id: player.id },
     select: { rankedBaseline: true, rankedLoggingStartedAt: true },
   });
 
-  // Snapshot `/players/{tag}.rankedElo` from *before* we pulled this battlelog — that’s rated elo
-  // entering any ranked rows discovered on this poll (e.g. 6000 before your first logged losses).
+  // Anchor the first capture to the previously saved rating when available.
   if (
     baselineAnchor?.rankedLoggingStartedAt &&
     baselineAnchor.rankedBaseline == null &&

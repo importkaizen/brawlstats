@@ -12,11 +12,6 @@ import {
 } from "@/lib/rankedStats";
 import { currentSeason, formatSeasonHeading } from "@/lib/seasons";
 import { RankedClient } from "@/components/ranked/RankedClient";
-import { fetchBattlelog, hasApiKey } from "@/lib/brawlstars";
-import {
-  mergeAllBattlesForRankedView,
-  previewRankedBattlesFromLog,
-} from "@/lib/rankedPreview";
 import { filterBattlesForRankedHistory } from "@/lib/rankedAccess";
 import {
   clusterRankedIntoMatches,
@@ -39,43 +34,14 @@ export default async function RankedPage({
   if (!player) return notFound();
 
   const battlesAsc = [...player.battles].reverse();
-  const tag = player.tag;
 
   const session = await auth();
   const canMutate = canMutateFromSession(session, player.tag);
   const canManualPoll =
     canMutate || guestPollCookieAllowsSlug(params.playerTag);
 
-  let battlelogItems: Awaited<ReturnType<typeof fetchBattlelog>>["items"] = [];
-
-  const canUseLiveRankedLog =
-    hasApiKey() &&
-    !player.isDemo &&
-    player.rankedLoggingStartedAt != null;
-
-  if (canUseLiveRankedLog) {
-    try {
-      const log = await fetchBattlelog(tag);
-      battlelogItems = log.items;
-    } catch {
-      // Fall back to DB-only ranked rows.
-    }
-  }
-
-  const previewRanked = canUseLiveRankedLog
-    ? previewRankedBattlesFromLog(battlelogItems, tag, player.id)
-    : [];
-
   const season = searchParams.season ?? "current";
-
-  const mergedBattles = mergeAllBattlesForRankedView(
-    battlesAsc,
-    previewRanked,
-  );
-  const battlesForRanked = filterBattlesForRankedHistory(
-    player,
-    mergedBattles,
-  );
+  const battlesForRanked = filterBattlesForRankedHistory(player, battlesAsc);
 
   const baselineAt = player.rankedBaselineAt ?? player.rankedLoggingStartedAt;
   const rankedPoolAsc = rankedBattlesPoolAsc({
@@ -98,10 +64,7 @@ export default async function RankedPage({
   };
   const anchorBeforePool = ratedAnchorBeforePool(rankedRatedOpts);
 
-  const rankedMatchLog = buildRankedMatchLogRows(
-    rankedPoolAsc,
-    rankedRatedOpts,
-  )
+  const rankedMatchLog = buildRankedMatchLogRows(rankedPoolAsc, rankedRatedOpts)
     .slice(-25)
     .reverse();
 
@@ -125,8 +88,7 @@ export default async function RankedPage({
   const allRankedStored = player.battles.filter(
     (b) =>
       b.isRanked &&
-      (player.isDemo ||
-        (loggingAt != null && b.battleTime >= loggingAt)),
+      (player.isDemo || (loggingAt != null && b.battleTime >= loggingAt)),
   );
   const totalRankedCaptured = allRankedStored.length;
   const rankedClustersStored = clusterRankedIntoMatches(

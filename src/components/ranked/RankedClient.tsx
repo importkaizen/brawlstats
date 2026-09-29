@@ -29,7 +29,6 @@ import { RankedChart } from "@/components/charts/LazyCharts";
 import { BrawlerBreakdown } from "./BrawlerBreakdown";
 import { getSubTier, subTierProgress } from "@/lib/rankedTiers";
 import { formatNumber, formatPercent } from "@/lib/utils";
-import { MANUAL_POLL_DISABLED_HINT } from "@/lib/guestRefreshCookie";
 import type {
   RankedBrawlerRow,
   RankedMatchLogRow,
@@ -115,7 +114,8 @@ export function RankedClient({
   const [rankedOptInError, setRankedOptInError] = useState<string | null>(null);
   const [flash, setFlash] = useState<FlashPayload | null>(null);
   const captureInFlight = useRef(false);
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
+  const lastAutomaticCapture = useRef(0);
 
   const refreshLocked = !data.isDemo && !canManualPoll;
   /** Ranked logging toggles: linked tag **or** same browser guest-connect cookie as Capture. */
@@ -142,14 +142,35 @@ export function RankedClient({
 
   const captureRanked = useCallback(
     async (automatic: boolean) => {
-      if (data.isDemo || refreshLocked || captureInFlight.current) return;
+      if (
+        data.isDemo ||
+        captureInFlight.current ||
+        (automatic && refreshLocked)
+      )
+        return;
+      if (automatic && Date.now() - lastAutomaticCapture.current < 15_000)
+        return;
+      lastAutomaticCapture.current = Date.now();
       captureInFlight.current = true;
       setRefreshing(true);
       try {
-        const res = await fetch(`${playerApiBase(data.player.slug)}/refresh`, {
-          method: "POST",
-          credentials: "same-origin",
-        });
+        // A dashboard opened from a saved/shared URL may not have the connect
+        // cookie. Manual refresh uses the existing public tag-connect flow.
+        const res = await fetch(
+          refreshLocked
+            ? "/api/players/connect"
+            : `${playerApiBase(data.player.slug)}/refresh`,
+          {
+            method: "POST",
+            credentials: "same-origin",
+            ...(refreshLocked
+              ? {
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ tag: data.player.tag }),
+                }
+              : {}),
+          },
+        );
         if (!res.ok) {
           const err = (await res.json().catch(() => ({}))) as {
             error?: string;
@@ -160,14 +181,22 @@ export function RankedClient({
           });
           return;
         }
-        const result = (await res.json()) as { inserted?: number };
+        const result = (await res.json()) as {
+          inserted?: number;
+          polled?: { inserted: number };
+        };
+        const inserted = result.inserted ?? result.polled?.inserted ?? 0;
         if (!automatic) {
           setFlash({
             variant: "success",
-            message: result.inserted
-              ? `Captured ${result.inserted} new battles. The graph includes finished Ranked games.`
+            message: inserted
+              ? `Saved ${inserted} new battles. Ranked graph refreshed.`
               : "Up to date. Brawl Stars has no new battles available yet.",
           });
+        } else {
+          setFlash((previous) =>
+            previous?.variant === "error" ? null : previous,
+          );
         }
         startTransition(() => router.refresh());
       } catch (err) {
@@ -180,7 +209,14 @@ export function RankedClient({
         setRefreshing(false);
       }
     },
-    [data.player.slug, data.isDemo, refreshLocked, router, startTransition],
+    [
+      data.player.slug,
+      data.player.tag,
+      data.isDemo,
+      refreshLocked,
+      router,
+      startTransition,
+    ],
   );
 
   const onRefresh = useCallback(() => captureRanked(false), [captureRanked]);
@@ -375,11 +411,14 @@ export function RankedClient({
     const captureIfVisible = () => {
       if (document.visibilityState === "visible") void captureRanked(true);
     };
+    captureIfVisible();
     const timer = window.setInterval(captureIfVisible, 60_000);
     document.addEventListener("visibilitychange", captureIfVisible);
+    window.addEventListener("focus", captureIfVisible);
     return () => {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", captureIfVisible);
+      window.removeEventListener("focus", captureIfVisible);
     };
   }, [data.isDemo, refreshLocked, captureRanked]);
 
@@ -415,15 +454,15 @@ export function RankedClient({
               variant="secondary"
               size="sm"
               onClick={onRefresh}
-              disabled={refreshing || refreshLocked}
-              title={refreshLocked ? MANUAL_POLL_DISABLED_HINT : undefined}
+              disabled={refreshing || isPending}
+              aria-busy={refreshing || isPending}
             >
-              {refreshing ? (
+              {refreshing || isPending ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <RefreshCw className="h-3.5 w-3.5" />
               )}
-              {refreshing ? "Capturing" : "Capture now"}
+              {refreshing || isPending ? "Refreshing…" : "Refresh"}
             </Button>
           )}
         </div>
@@ -442,8 +481,7 @@ export function RankedClient({
               </p>
               {rankSettingsLocked && (
                 <p className="mt-2 text-xs text-gold">
-                  Connect this tag from the home page or sign in to start
-                  tracking.
+                  Refresh this dashboard to connect the tag and start tracking.
                 </p>
               )}
             </div>
@@ -655,9 +693,10 @@ export function RankedClient({
               </summary>
               <p className="mt-2 max-w-2xl leading-relaxed">
                 Each point represents a finished Ranked game, after two round
-                wins. Ratings are saved when captured. Games captured together
-                may share a rating because Brawl Stars does not provide every
-                historical ELO change. Games in progress appear once finished.
+                wins. Ratings are saved when captured. Intermediate ratings for
+                games captured together are estimated between captures, because
+                Brawl Stars does not provide every historical ELO change. Games
+                in progress appear once finished.
               </p>
             </details>
           </Card>
