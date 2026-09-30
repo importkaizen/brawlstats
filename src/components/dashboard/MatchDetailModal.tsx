@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowUpRight, Loader2, X } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { parseStoredBattleDetail } from "@/lib/battleDetail";
 import type { DetailRosterPlayer } from "@/lib/battleDetail";
 import { battleQueueDisplayLabel } from "@/lib/brawlstars";
+import { isValidTag } from "@/lib/tag";
 import {
   brawlerIconUrl,
   cn,
@@ -68,56 +70,91 @@ function MapHeroBackdrop({
   );
 }
 
-function RosterRows({ players }: { players: DetailRosterPlayer[] }) {
+function RosterRows({
+  players,
+  onViewPlayer,
+  openingTag,
+}: {
+  players: DetailRosterPlayer[];
+  onViewPlayer: (player: DetailRosterPlayer) => void;
+  openingTag: string | null;
+}) {
   return (
     <div className="divide-y divide-border/60 rounded-lg border border-border bg-card">
-      {players.map((p) => (
-        <div
-          key={`${p.tag}-${p.brawlerId}`}
-          className={cn(
-            "flex items-center gap-3 px-3 py-2.5 transition-colors sm:px-4",
-            p.isViewer && "bg-gold/[0.06]",
-          )}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={brawlerIconUrl(p.brawlerId)}
-            alt={p.brawlerName}
-            className="h-9 w-9 shrink-0 rounded-md bg-muted object-cover"
-          />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="truncate font-medium">{p.name}</span>
-              <span className="truncate font-mono text-xs text-muted-foreground">
-                {p.tag}
-              </span>
-              {p.isStarPlayer && (
-                <Badge tone="gold" className="!py-0 text-[10px]">
-                  Star Player
-                </Badge>
-              )}
-              {p.isViewer && (
-                <Badge
-                  tone="gold"
-                  className="!border-gold/50 !bg-gold/10 !py-0 text-[10px] text-gold"
-                >
-                  You
-                </Badge>
-              )}
+      {players.map((p, index) => {
+        const canView = isValidTag(p.tag);
+        const content = (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={brawlerIconUrl(p.brawlerId)}
+              alt={p.brawlerName}
+              className="h-9 w-9 shrink-0 rounded-md bg-muted object-cover"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="truncate font-medium">{p.name}</span>
+                <span className="truncate font-mono text-xs text-muted-foreground">
+                  {p.tag}
+                </span>
+                {p.isStarPlayer && (
+                  <Badge tone="gold" className="!py-0 text-[10px]">
+                    Star Player
+                  </Badge>
+                )}
+                {p.isViewer && (
+                  <Badge
+                    tone="gold"
+                    className="!border-gold/50 !bg-gold/10 !py-0 text-[10px] text-gold"
+                  >
+                    You
+                  </Badge>
+                )}
+              </div>
+              <div className="mt-0.5 text-xs text-muted-foreground">
+                {p.brawlerName}{" "}
+                <span className="tabular-nums">· Power {p.power}</span>
+              </div>
             </div>
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              {p.brawlerName}{" "}
-              <span className="tabular-nums">· Power {p.power}</span>
+            <div className="shrink-0 text-right">
+              <div className="text-[10px] text-muted-foreground">Trophies</div>
+              <div className="font-semibold tabular-nums text-foreground">
+                {p.trophies != null ? formatNumber(p.trophies) : "—"}
+              </div>
             </div>
+            {canView &&
+              (openingTag === p.tag ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-gold" />
+              ) : (
+                <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              ))}
+          </>
+        );
+        const rowClass = cn(
+          "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors sm:px-4",
+          p.isViewer && "bg-gold/[0.06]",
+        );
+        return canView ? (
+          <button
+            key={`${p.tag}-${p.brawlerId}-${index}`}
+            type="button"
+            className={cn(
+              rowClass,
+              "hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gold",
+            )}
+            aria-label={`View ${p.name}'s stats`}
+            aria-busy={openingTag === p.tag}
+            disabled={openingTag !== null}
+            onClick={() => onViewPlayer(p)}
+          >
+            {content}
+          </button>
+        ) : (
+          <div key={`${p.tag}-${p.brawlerId}-${index}`} className={rowClass}>
+            {content}
           </div>
-          <div className="shrink-0 text-right">
-            <div className="text-[10px] text-muted-foreground">Trophies</div>
-            <div className="font-semibold tabular-nums text-foreground">
-              {p.trophies != null ? formatNumber(p.trophies) : "—"}
-            </div>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -133,6 +170,49 @@ export function MatchDetailModal(props: {
   const { match, viewerTag, viewerLadderTrophyMap, open, onClose } = props;
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  const [openingTag, setOpeningTag] = useState<string | null>(null);
+  const [playerError, setPlayerError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPlayerError(null);
+  }, [match?.id]);
+
+  const viewPlayer = useCallback(
+    async (player: DetailRosterPlayer) => {
+      if (!isValidTag(player.tag) || openingTag) return;
+      setOpeningTag(player.tag);
+      setPlayerError(null);
+      try {
+        const response = await fetch("/api/players/visit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ tag: player.tag }),
+        });
+        const result = (await response.json().catch(() => null)) as {
+          error?: string;
+          player?: { slug: string };
+        } | null;
+        if (!response.ok || !result?.player?.slug) {
+          throw new Error(
+            result?.error ?? "Could not load this player's stats.",
+          );
+        }
+        onClose();
+        router.push(`/dashboard/${result.player.slug}`);
+      } catch (error) {
+        setPlayerError(
+          error instanceof Error
+            ? error.message
+            : "Could not load this player's stats.",
+        );
+      } finally {
+        setOpeningTag(null);
+      }
+    },
+    [onClose, openingTag, router],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -250,6 +330,14 @@ export function MatchDetailModal(props: {
         </div>
 
         <div className="scrollbar-thin overflow-y-auto px-4 py-4 sm:px-6 sm:pb-6">
+          {playerError && (
+            <p
+              role="alert"
+              className="mb-4 rounded-md border border-loss/40 bg-loss/10 p-3 text-xs text-loss"
+            >
+              {playerError}
+            </p>
+          )}
           {!parsed ? (
             <p className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
               Full roster data isn&apos;t available for this battle (stored
@@ -286,7 +374,11 @@ export function MatchDetailModal(props: {
                       </div>
                     </div>
                   </header>
-                  <RosterRows players={team.players} />
+                  <RosterRows
+                    players={team.players}
+                    onViewPlayer={viewPlayer}
+                    openingTag={openingTag}
+                  />
                 </section>
               ))}
               {parsed.teams.length >= 3 ? (
@@ -308,7 +400,11 @@ export function MatchDetailModal(props: {
               <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
                 Participants
               </h3>
-              <RosterRows players={parsed.players} />
+              <RosterRows
+                players={parsed.players}
+                onViewPlayer={viewPlayer}
+                openingTag={openingTag}
+              />
               <p className="mt-3 text-xs text-muted-foreground">
                 {match.isRanked
                   ? "Ranked battlelogs omit ladder trophies except via profile snapshot for your row; other players typically show —."

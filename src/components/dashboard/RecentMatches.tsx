@@ -94,7 +94,8 @@ export function RecentMatches({
       />
 
       <p className="mb-3 px-1 text-xs text-muted-foreground">
-        Select a match to see teams, trophies, and the star player.
+        Select a match for battle details, then select a player to see their
+        stats.
       </p>
 
       <div className="mb-3 flex items-center justify-between gap-3 md:hidden">
