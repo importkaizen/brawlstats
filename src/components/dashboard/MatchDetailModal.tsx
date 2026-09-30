@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/Button";
 import { parseStoredBattleDetail } from "@/lib/battleDetail";
 import type { DetailRosterPlayer } from "@/lib/battleDetail";
 import { battleQueueDisplayLabel } from "@/lib/brawlstars";
-import { isValidTag } from "@/lib/tag";
+import { RANKED_SUB_TIERS, getSubTier } from "@/lib/rankedTiers";
+import { RANK_TIERS } from "@/lib/ranks";
+import { isValidTag, normalizeTag } from "@/lib/tag";
 import {
   brawlerIconUrl,
   cn,
@@ -18,6 +20,8 @@ import {
   mapBackdropImageCandidates,
   modeImageUrl,
   prettyMode,
+  rankedMainIconUrl,
+  rankedTierIconUrl,
 } from "@/lib/utils";
 import type { MatchRow } from "@/components/dashboard/matchRow";
 
@@ -26,6 +30,84 @@ function formatDur(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+type RankPreview = {
+  rankedRank: number | null;
+  rankedRankName: string | null;
+  rankedElo: number | null;
+};
+
+function CurrentRank({ rank }: { rank: RankPreview | null | undefined }) {
+  const heading = (
+    <span className="block text-[10px] text-muted-foreground">
+      Current rank
+    </span>
+  );
+  if (rank === undefined) {
+    return (
+      <>
+        {heading}
+        <span className="text-muted-foreground">Loading…</span>
+      </>
+    );
+  }
+  if (rank === null) {
+    return (
+      <>
+        {heading}
+        <span className="text-muted-foreground">Unavailable</span>
+      </>
+    );
+  }
+
+  const rankName =
+    rank.rankedRankName ??
+    (rank.rankedRank != null
+      ? RANKED_SUB_TIERS[rank.rankedRank - 1]?.name
+      : null) ??
+    (rank.rankedElo != null && rank.rankedElo > 0
+      ? getSubTier(rank.rankedElo).name
+      : null);
+  if (!rankName) {
+    return (
+      <>
+        {heading}
+        <span className="text-muted-foreground">Unranked</span>
+      </>
+    );
+  }
+
+  const color =
+    RANK_TIERS.find((tier) =>
+      rankName.toLowerCase().startsWith(tier.name.toLowerCase()),
+    )?.color ?? "#B7BEE8";
+  const iconUrl =
+    rankedTierIconUrl(rank.rankedRank) ?? rankedMainIconUrl(rankName);
+
+  return (
+    <>
+      {heading}
+      <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px]">
+        {iconUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={iconUrl}
+            alt=""
+            className="h-4 w-4 shrink-0 object-contain"
+          />
+        )}
+        <span className="whitespace-nowrap font-semibold" style={{ color }}>
+          {rankName}
+        </span>
+        {rank.rankedElo != null && rank.rankedElo > 0 && (
+          <span className="whitespace-nowrap tabular-nums text-muted-foreground">
+            {formatNumber(rank.rankedElo)}
+          </span>
+        )}
+      </span>
+    </>
+  );
 }
 
 function MapHeroBackdrop({
@@ -74,10 +156,14 @@ function RosterRows({
   players,
   onViewPlayer,
   openingTag,
+  showCurrentRank,
+  ranksByTag,
 }: {
   players: DetailRosterPlayer[];
   onViewPlayer: (player: DetailRosterPlayer) => void;
   openingTag: string | null;
+  showCurrentRank: boolean;
+  ranksByTag: Record<string, RankPreview | null>;
 }) {
   return (
     <div className="divide-y divide-border/60 rounded-lg border border-border bg-card">
@@ -115,13 +201,24 @@ function RosterRows({
                 {p.brawlerName}{" "}
                 <span className="tabular-nums">· Power {p.power}</span>
               </div>
+              {showCurrentRank && (
+                <div className="mt-1.5 min-w-0 text-xs">
+                  <CurrentRank
+                    rank={canView ? ranksByTag[normalizeTag(p.tag)] : null}
+                  />
+                </div>
+              )}
             </div>
-            <div className="shrink-0 text-right">
-              <div className="text-[10px] text-muted-foreground">Trophies</div>
-              <div className="font-semibold tabular-nums text-foreground">
-                {p.trophies != null ? formatNumber(p.trophies) : "—"}
+            {!showCurrentRank && (
+              <div className="shrink-0 text-right">
+                <div className="text-[10px] text-muted-foreground">
+                  Trophies
+                </div>
+                <div className="font-semibold tabular-nums text-foreground">
+                  {p.trophies != null ? formatNumber(p.trophies) : "—"}
+                </div>
               </div>
-            </div>
+            )}
             {canView &&
               (openingTag === p.tag ? (
                 <Loader2 className="h-4 w-4 shrink-0 animate-spin text-gold" />
@@ -173,10 +270,76 @@ export function MatchDetailModal(props: {
   const router = useRouter();
   const [openingTag, setOpeningTag] = useState<string | null>(null);
   const [playerError, setPlayerError] = useState<string | null>(null);
+  const [ranksByTag, setRanksByTag] = useState<
+    Record<string, RankPreview | null>
+  >({});
+  const rankCache = useRef(
+    new Map<string, { rank: RankPreview; fetchedAt: number }>(),
+  );
 
   useEffect(() => {
     setPlayerError(null);
   }, [match?.id]);
+
+  useEffect(() => {
+    if (!open || !match?.isRanked) return;
+    const detail = parseStoredBattleDetail(match.raw, viewerTag);
+    if (!detail) return;
+
+    const players =
+      detail.layout === "teams"
+        ? detail.teams.flatMap((team) => team.players)
+        : detail.players;
+    const tags = [
+      ...new Set(
+        players
+          .map((player) => player.tag)
+          .filter(isValidTag)
+          .map(normalizeTag),
+      ),
+    ];
+    const now = Date.now();
+    const cached: Record<string, RankPreview> = {};
+    const missing: string[] = [];
+    for (const tag of tags) {
+      const entry = rankCache.current.get(tag);
+      if (entry && now - entry.fetchedAt < 120_000) cached[tag] = entry.rank;
+      else missing.push(tag);
+    }
+    setRanksByTag(cached);
+    if (missing.length === 0) return;
+
+    const controller = new AbortController();
+    void (async () => {
+      let fetched: Record<string, RankPreview | null> = {};
+      try {
+        const response = await fetch("/api/players/ranks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tags: missing }),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Could not load ranks");
+        const result = (await response.json()) as {
+          ranks?: Record<string, RankPreview | null>;
+        };
+        fetched = result.ranks ?? {};
+      } catch {
+        if (controller.signal.aborted) return;
+      }
+      if (controller.signal.aborted) return;
+      const resolved = Object.fromEntries(
+        missing.map((tag) => [tag, fetched[tag] ?? null]),
+      ) as Record<string, RankPreview | null>;
+      const fetchedAt = Date.now();
+      for (const [tag, rank] of Object.entries(resolved)) {
+        if (rank) rankCache.current.set(tag, { rank, fetchedAt });
+      }
+      setRanksByTag({ ...cached, ...resolved });
+    })();
+
+    return () => controller.abort();
+  }, [open, match?.id, match?.isRanked, match?.raw, viewerTag]);
 
   const viewPlayer = useCallback(
     async (player: DetailRosterPlayer) => {
@@ -363,21 +526,25 @@ export function MatchDetailModal(props: {
                 >
                   <header className="mb-3 flex flex-wrap items-end justify-between gap-2">
                     <h3 className="text-sm font-semibold">{team.label}</h3>
-                    <div className="text-right">
-                      <div className="text-[10px] text-muted-foreground">
-                        Team trophies
+                    {!match.isRanked && (
+                      <div className="text-right">
+                        <div className="text-[10px] text-muted-foreground">
+                          Team trophies
+                        </div>
+                        <div className="text-lg font-bold tabular-nums text-gold">
+                          {team.trophySum != null
+                            ? formatNumber(team.trophySum)
+                            : "—"}
+                        </div>
                       </div>
-                      <div className="text-lg font-bold tabular-nums text-gold">
-                        {team.trophySum != null
-                          ? formatNumber(team.trophySum)
-                          : "—"}
-                      </div>
-                    </div>
+                    )}
                   </header>
                   <RosterRows
                     players={team.players}
                     onViewPlayer={viewPlayer}
                     openingTag={openingTag}
+                    showCurrentRank={match.isRanked}
+                    ranksByTag={ranksByTag}
                   />
                 </section>
               ))}
@@ -390,7 +557,7 @@ export function MatchDetailModal(props: {
               ) : (
                 <p className="col-span-full text-xs text-muted-foreground">
                   {match.isRanked
-                    ? "Ranked games don’t include other players’ ladder trophies. Yours come from your latest profile."
+                    ? "Current ranks are live and may differ from each player’s rank when this match was played."
                     : "Team totals add up each player’s brawler trophies at the time of the match."}
                 </p>
               )}
@@ -404,10 +571,12 @@ export function MatchDetailModal(props: {
                 players={parsed.players}
                 onViewPlayer={viewPlayer}
                 openingTag={openingTag}
+                showCurrentRank={match.isRanked}
+                ranksByTag={ranksByTag}
               />
               <p className="mt-3 text-xs text-muted-foreground">
                 {match.isRanked
-                  ? "Ranked battlelogs omit ladder trophies except via profile snapshot for your row; other players typically show —."
+                  ? "Current ranks are live and may differ from each player’s rank when this match was played."
                   : "This mode was stored as a flat player list rather than grouped teams. Brawler trophies are per-contestant totals from the battlelog payload."}
               </p>
             </>
